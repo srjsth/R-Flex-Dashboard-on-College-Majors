@@ -1,0 +1,616 @@
+---
+title: "Picking a College Major"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+    source_code: embed
+    social: menu
+    navbar:
+      - {title: "Data source", href: "https://www.kaggle.com/tunguz/college-majors", icon: "far fa-clipboard"}
+---
+
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(viridis)
+library(DT)
+library(plotly)
+library(scales)
+library(viridis)
+library(forcats)
+library(wesanderson)
+library(wordcloud2)
+library(tm)
+library(sampling)
+library(ggpubr)
+
+col_majors = read.csv("recent-grads.csv", header = TRUE)
+description = read.csv("description.csv", header = TRUE, check.names = FALSE)
+col_majors = rename(col_majors, "Major_Category" = "Major_category", "Median_Salary" = "Median", "College_Jobs" = "College_jobs", "Unemployment_Rate" = "Unemployment_rate")
+
+# Checking for missing values in the data set:
+b = apply(is.na(col_majors), 2, which)
+
+# Creating a new data frame after removing the missing values:
+col_majors_new = col_majors[-c(22),]
+
+# Checking for duplicates
+# If value is equal to number of rows in data then no duplicates
+n_distinct(col_majors_new$Major_code)
+n_distinct(col_majors_new$Major)
+
+# Resetting the index:
+row.names(col_majors_new) = NULL
+
+# Setting the rank column values as now, 1 major has been removed:
+col_majors_new['Rank'] = c(1:dim(col_majors_new['Rank'])[1])
+
+words = col_majors_new
+
+n = c(1:dim(col_majors_new)[1])
+major_cat = unique(col_majors_new$Major_Category)
+sum_men = sum_women = 0
+total_men = total_women = c()
+total_employed = total_median = total_collegejob = total_unemployment_rate = c()
+sum_employed = sum_median = sum_collegejob = sum_unemployment_rate = 0
+total_major_cat_count = c()
+
+for (i in major_cat) {
+  major_cat_count = 0
+  for (i_1 in n) {
+    if (col_majors_new[i_1,'Major_Category'] == i) {
+      sum_men = sum_men + col_majors_new[i_1,'Men']
+      sum_women = sum_women + col_majors_new[i_1,'Women']
+      sum_employed = sum_employed + col_majors_new[i_1,'Employed']
+      sum_median = sum_median + col_majors_new[i_1,'Median_Salary']
+      sum_collegejob = sum_collegejob + col_majors_new[i_1,'College_Jobs']
+      sum_unemployment_rate = sum_unemployment_rate + col_majors_new[i_1,'Unemployment_Rate']
+      major_cat_count = major_cat_count + 1
+    }
+  }
+  total_major_cat_count = c(total_major_cat_count, major_cat_count)
+  total_men = c(total_men, sum_men)
+  total_women = c(total_women, sum_women)
+  total_employed = c(total_employed, sum_employed)
+  sum_median = sum_median / major_cat_count
+  total_median = c(total_median, sum_median)
+  total_collegejob = c(total_collegejob, sum_collegejob)
+  sum_unemployment_rate = sum_unemployment_rate / major_cat_count
+  total_unemployment_rate = c(total_unemployment_rate, sum_unemployment_rate)
+  sum_men = sum_women = 0
+  sum_employed = sum_median = sum_collegejob = 0
+}
+
+col_majors_new2 = data.frame(Major_Category = major_cat, Men = total_men, Women = total_women, Employed = total_employed, Median_Salary = total_median, College_Jobs = total_collegejob, Unemployment_Rate = total_unemployment_rate, Major_Count = total_major_cat_count)
+
+col_majors_new["Total_Jobs"] = col_majors_new["College_Jobs"] + col_majors_new["Non_college_jobs"] + col_majors_new["Low_wage_jobs"]
+
+data_parents = c()
+data_new_col = col_majors_new2[order(col_majors_new2$Major_Category),]
+data_values = rep(1,nrow(col_majors_new))
+data_values = c(data_new_col$Major_Count, data_values)
+data_labels = c(data_new_col$Major_Category, col_majors_new[order(col_majors_new$Major_Category),"Major"])
+
+for (i in 1:nrow(data_new_col)) {
+  data_parents = c(data_parents,rep(data_new_col[i,"Major_Category"], each=data_new_col[i,"Major_Count"]))
+}
+
+data_parents = c(rep("",nrow(col_majors_new2)),data_parents)
+
+Categorical.Variables = c("Major_Category")
+
+Numerical.Variables = c("Men", "Women", "Employed", "Median_Salary", "College_Jobs", "Unemployment_Rate")
+
+set.seed(544)
+
+samples = 10000
+sample.size = c(10, 20, 30, 40, 50)
+xbar = data.frame(Ten = numeric(samples), Twenty = numeric(samples), Thirty = numeric(samples), Forty = numeric(samples), Fifty = numeric(samples))
+
+for (i in 1:length(sample.size)) {
+  for (j in 1:samples) {
+  xbar[j,i] = mean(sample(col_majors_new$Median_Salary, sample.size[i], replace = FALSE))
+}
+}
+
+set.seed(544)
+sample.size.compare = 60
+group_size = ceiling(nrow(col_majors_new) / sample.size.compare)
+k = sample(group_size,1)
+selected = seq(from=k, by=group_size, length=sample.size.compare); selected
+n_sys = length(selected[selected > 172])
+selected[(length(selected)-n_sys+1):length(selected)] = sample(172,n_sys)
+sys_selected = col_majors_new[selected, "Median_Salary"]
+
+set.seed(544)
+index_ran = sample(172, sample.size.compare)
+ran_selected = col_majors_new[index_ran,] 
+
+set.seed(544)
+a_2 = col_majors_new2[order(col_majors_new2$Major_Category),]
+st.size = round((a_2$Major_Count / sum(a_2$Major_Count)) * sample.size.compare)
+st.size[12] = 1
+a_1 = col_majors_new[,c('Major_Category', 'Median_Salary')]
+a_1 = a_1[order(a_1$Major_Category),]
+str.1 = sampling::strata(a_1, stratanames=c('Major_Category'), size=st.size, method='srswor')
+selected_str = getdata(a_1,str.1)
+
+set.seed(544)
+incl_prob = inclusionprobabilities(col_majors_new$Median_Salary, sample.size.compare)
+sel_incl = UPsystematic(incl_prob)
+samp_drawn_incl = col_majors_new[sel_incl==1,]
+
+sample.size.names = c("Ten", "Twenty", "Thirty", "Forty", "Fifty")
+
+```
+
+# Introduction
+
+Row
+-------------------------------------------------------------------
+### **Authors**
+
+ Suraaj Shrestha, Muhammad Osama, Heli Kolambekar
+
+Row {data-height = 500}
+-------------------------------------------------------------------
+### **Description**
+
+The data is from American Community Survey 2010-2012 Public Use Microdata Series. The table below shows the description of the different columns in the data set.
+
+```{r description}
+
+renderDT(DT::datatable(description, rownames = FALSE, options = list(dom = 'tp', pageLength=11)))
+
+```
+
+Row
+-------------------------------------------------------------------
+### **Data Preparation**
+
+The data set was pretty clean so we did not have a lot of trouble with data preparation. There were no duplicate values in the data set. The Food and Science major was the only row having some null values, which was effectively removed. The data set was then re indexed and the ranks column in the data set was also set so that the ranks are consecutive.
+
+Row 
+-------------------------------------------------------------------
+### **Number of Men & Women in each Major Category**
+
+```{r fig.height=10}
+# Analyzing a categorical variable 'major category' for this data set:
+major_cat_1 = rep(col_majors_new2$Major_Category,2)
+men_women_1 = c(col_majors_new2$Men, col_majors_new2$Women)
+gender = rep(c("Male", "Female"), each=16)
+df1 = data.frame(major_cat_1, men_women_1, Gender=gender)
+
+renderPlotly({
+  
+  p4 = ggplot(df1, aes(x=fct_reorder(major_cat_1, men_women_1), y=men_women_1, fill=Gender)) + geom_bar(stat='identity', position='dodge', aes(text=paste('Major Category:',major_cat_1,'\nCount:', men_women_1,"\nGender:",Gender))) + scale_x_discrete(name ="Major Category") + scale_y_continuous(labels = number, name="Total Count") + theme(axis.text.x = element_text(face="bold", color="#993333", size=10, angle=45),  plot.margin = margin(2, 1, 3, 1, unit="cm"))
+  ggplotly(p4, tooltip="text", res=200)
+  })
+
+```
+
+Row {data-height=70}
+-------------------------------------------------------------------
+### **Description**
+
+In this graph, we are analyzing the data set for the total number of men and women in each major category. We want to see what major category is the most widely chosen by the men and women and also, if there are more categories with more men than women or vice versa.
+
+
+Row {data-height=115}
+-------------------------------------------------------------------
+### **Findings**
+
+* Business is the most preferred major category.
+* Interdisciplinary is the least preferred major category.
+* There are more major categories that have more females than males.
+* Arts, Biology & Life Science, Communications & Journalism, Education, Health, Humanities & Liberal Arts, Industrial & Consumer Services, Interdisciplinary and Social Science are major categories with higher female representation.
+
+Row 
+-------------------------------------------------------------------
+### **Major Categories Composition of Data Set**
+
+```{r fig.height=10}
+
+plot_ly(labels=data_labels, parents=data_parents, values=data_values, branchvalues = 'total', type='sunburst')
+
+```
+
+
+# Data Set Dist.
+
+Column {.sidebar data-width=300}
+-------------------------------------------------------------------
+**Sample Size**
+
+```{r clt_input}
+
+selectInput(inputId="numeric_variable_3", label = "Select Numerical Variable:", 
+            choices = Numerical.Variables, selected = Numerical.Variables[2])
+
+selectInput(inputId="sample_size", label = "Select Sample Size:", 
+            choices = sample.size.names, selected = sample.size.names[1])
+
+selectInput(inputId="n_breaks_2", label = "Number of bins:", choices = c(10, 20, 35, 50), selected = 20)
+
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------------------------------------
+
+### **Density Histogram**
+```{r density, fig.height=6}
+renderPlotly({
+  
+  mean_data = mean(col_majors_new[,input$numeric_variable_3])
+  max_min = max(col_majors_new[,input$numeric_variable_3]) - min(col_majors_new[,input$numeric_variable_3])
+  
+  p3 = ggplot(col_majors_new, aes_string(x=input$numeric_variable_3)) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = input$n_breaks_2)+
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density") + scale_x_continuous(labels=number) + geom_vline(xintercept = mean_data, linetype="dotted", color="red") + geom_text(aes(mean_data, max(density(col_majors_new[,input$numeric_variable_3])$y), label = mean_data), nudge_x = max_min/10)
+  
+  ggplotly(p3, res=200)
+})
+```
+
+### **Box Plot**
+```{r whole data boxplot, fig.height=6}
+x = reactive({col_majors_new[,input$numeric_variable_3]})
+
+renderPlotly({
+  
+  fig = col_majors_new %>%
+    plot_ly(x=x(), type="box", text=col_majors_new$Major, name=" ", jitter=0.5, marker = list(color = 'rgb(7,40,89)'), fillcolor='rgb(107,174,214)') %>%
+    layout(xaxis = list(title=input$numeric_variable_3, tickformat="number"))
+  
+})
+```
+
+Row {data-height=70}
+-------------------------------------------------------------------
+### **Description**
+
+The density histogram and the box plot are being used to analyze the distribution of different numerical variables in the data set. The mean of the each of the numerical variables is also displayed on the histogram with a red vertical line. The box plot is used to display the quartiles of the numerical variables and the outliers.
+
+Row {data-height=390}
+-------------------------------------------------------------------
+### **Findings**
+
+**Density Histogram**
+
+* From the density histograms we can see that the distribution of all of the numerical variables is right skewed due to which the mean is also shifted to the right.
+* The mean number of women in the data set is greater than the mean number of men.
+
+**Box Plot**
+
+* The box plots show that the spread of the mid 50% of the data is small as compared to the spread of the entire data for each of the numerical variables.
+* The box plot shows that there are many outliers at the right extreme due to which the data is right skewed.
+* The median number of women in the data set is greater than the median number of men.
+* The minimum number of men in a major is 119.
+* The minimum number of women in a major is 0.
+* The maximum number of women in a major is much greater than the maximum number of men in a major.
+* The major with the highest number of men is Business Management & Administration.
+* The major with the highest number of women is Psychology.
+* The major with the max people employed is Psychology.
+* The Engineering Majors have a high median salary. The outliers for median salary include only the engineering majors. Petroleum Engineering has the highest median salary.
+* Nursing has the highest number of college jobs.
+* Nuclear Engineering has the highest unemployment rate of 0.18.
+
+# CLT
+
+Row {data-height=1008}
+-------------------------------------------------------------------
+
+```{r clt}
+renderPlotly({
+  
+  mean_data_6 = mean(col_majors_new[,"Median_Salary"])
+  max_min_6 = max(col_majors_new[,"Median_Salary"]) - min(col_majors_new[,"Median_Salary"])
+  
+  p1 = ggplot(col_majors_new, aes_string(x="Median_Salary")) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 20)+
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density", limits=c(0,0.0003)) + scale_x_continuous(labels=number, name="Original Distribution") + geom_vline(xintercept = mean_data_6, linetype="dash", color="red") + geom_text(aes(mean_data_6, max(density(col_majors_new[,"Median_Salary"])$y), label = mean_data_6), nudge_x = max_min_6/7)
+  
+  mean_data_1 = mean(xbar[,"Ten"])
+  max_min_1 = max(xbar[,"Ten"]) - min(xbar[,"Ten"])
+  
+  p2 = ggplot(xbar, aes_string(x="Ten")) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 20) +
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density", limits=c(0,0.0003)) + scale_x_continuous(labels=number, name="Sample Size 10") + geom_vline(xintercept = mean_data_1, linetype="dash", color="red") + geom_text(aes(mean_data_1, max(density(xbar[,"Ten"])$y), label = mean_data_1), nudge_x = max_min_1/12) + ggtitle("Sample Size 10")
+  
+  mean_data_2 = mean(xbar[,"Twenty"])
+  max_min_2 = max(xbar[,"Twenty"]) - min(xbar[,"Twenty"])
+  
+  p3 = ggplot(xbar, aes_string(x="Twenty")) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 20) +
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density", limits=c(0,0.0003)) + scale_x_continuous(labels=number, name="Sample Size 20") + geom_vline(xintercept = mean_data_2, linetype="dash", color="red") + geom_text(aes(mean_data_2, max(density(xbar[,"Twenty"])$y), label = mean_data_2), nudge_x = max_min_2/10) + ggtitle("Sample Size 20")
+  
+  mean_data_3 = mean(xbar[,"Thirty"])
+  max_min_3 = max(xbar[,"Thirty"]) - min(xbar[,"Thirty"])
+  
+  p4 = ggplot(xbar, aes_string(x="Thirty")) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 20) +
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density", limits=c(0,0.0003)) + scale_x_continuous(labels=number, name="Sample Size 30") + geom_vline(xintercept = mean_data_3, linetype="dash", color="red") + geom_text(aes(mean_data_3, max(density(xbar[,"Thirty"])$y), label = mean_data_3), nudge_x = max_min_3/10) + ggtitle("Sample Size 30")
+  
+  mean_data_4 = mean(xbar[,"Forty"])
+  max_min_4 = max(xbar[,"Forty"]) - min(xbar[,"Forty"])
+  
+  p5 = ggplot(xbar, aes_string(x="Forty")) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 20) +
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density", limits=c(0,0.0003)) + scale_x_continuous(labels=number, name="Sample Size 40") + geom_vline(xintercept = mean_data_4, linetype="dash", color="red") + geom_text(aes(mean_data_4, max(density(xbar[,"Forty"])$y), label = mean_data_4), nudge_x = max_min_4/10) + ggtitle("Sample Size 40")
+  
+  mean_data_5 = mean(xbar[,"Fifty"])
+  max_min_5 = max(xbar[,"Fifty"]) - min(xbar[,"Fifty"])
+  
+  p6 = ggplot(xbar, aes_string(x="Fifty")) +  geom_histogram(aes(y=..density..), colour="black", fill="white", bins = 20) +
+ geom_density(alpha=.2, fill="#FF6666") + scale_y_continuous(labels = number, name="Density", limits=c(0,0.0003)) + scale_x_continuous(labels=number, name="Sample Size 50") + geom_vline(xintercept = mean_data_5, linetype="dash", color="red") + geom_text(aes(mean_data_5, max(density(xbar[,"Fifty"])$y), label = mean_data_5), nudge_x = max_min_5/10) + ggtitle("Distribution of Median Salaries") + theme(plot.title = element_text(hjust = 0.5))
+  
+  fig = subplot(p1,p2,p3,p4,p5,p6, nrows=3, margin=0.05, titleY = TRUE, titleX = TRUE) %>% layout(height=1000, showlegend=TRUE, title="Distribution of Median Salaries")
+  
+  fig
+  
+  ggplotly(fig, res=200)
+})
+```
+
+Row {data-height=70}
+-------------------------------------------------------------------
+### **Description**
+
+This graph shows the density histogram of the sample means of the median salary column in the data set. The vertical red line is used to show the mean of the sample means. The sampling of the median salary column has been done using the simple random sampling method. We are investigating the central limit theorem by analyzing the distribution of the sample means.
+
+Row {data-height=95}
+-------------------------------------------------------------------
+### **Findings**
+
+* The sample means follow a normal distribution as established by the central limit theorem.
+* As the sample size is increasing, the density peak at the mean value is increasing and the spread of the sample means is decreasing.
+* As established by the central limit theorem, the mean of the sample means is very close to the actual mean of median salary column.
+
+# Sampling
+
+Row {data-height=910}
+-------------------------------------------------------------------
+
+```{r sampling}
+
+renderPlotly({
+original = plot_ly(col_majors_new, x=~Median_Salary, type="histogram", histnorm="density", marker = list(line = list(color = "black", width = 1)), name="Original Distribution") %>% layout(xaxis=list(title="Median Salary", tickformat="number", range=list(10000, 130000)), yaxis=list(title="Density", tickformat="number"))
+
+random = plot_ly(ran_selected, x=~Median_Salary, type="histogram", histnorm="density", marker = list(line = list(color = "black", width = 1)), name="Random Sampling") %>% layout(xaxis=list(title="Median Salary", tickformat="number", range=list(10000, 130000)), yaxis=list(title="Density", tickformat="number"))
+
+sys = plot_ly(x=sys_selected, type="histogram", histnorm="density", marker = list(line = list(color = "black", width = 1)), name="Systematic Sampling") %>% layout(xaxis=list(title="Median Salary", tickformat="number", range=list(10000, 130000)), yaxis=list(title="Density", tickformat="number"))
+
+sys_inclusive = plot_ly(samp_drawn_incl, x=~Median_Salary, type="histogram", histnorm="density", marker = list(line = list(color = "black", width = 1)), name="Systematic Sampling with Inclusion Probabilities") %>% layout(xaxis=list(title="Median Salary", tickformat="number", range=list(10000, 130000)), yaxis=list(title="Density", tickformat="number"))
+
+stratified_samp = plot_ly(selected_str, x=~Median_Salary, type="histogram", histnorm="density", marker = list(line = list(color = "black", width = 1)), name="Stratified Sampling") %>% layout(xaxis=list(title="Median Salary", tickformat="number", range=list(10000, 130000)), yaxis=list(title="Density", tickformat="number"))
+
+fig = subplot(original, random, sys, sys_inclusive, stratified_samp, nrows=3, titleY = TRUE, titleX = TRUE, margin = 0.05) %>% layout(title="Sampling Methods with Sample Size 60", height=900)
+})
+
+```
+
+Row
+-------------------------------------------------------------------
+### **Description**
+
+Different sampling methods are used on the data set with a sampling size of 60 to check if the distribution of these samples is a good representation of the original distribution of the data set.
+
+Row
+-------------------------------------------------------------------
+### **Findings**
+
+Random and Systematic sampling method distributions more closely represent the distribution of the entire data set.
+
+
+# Major Category
+
+Column {.sidebar data-width=300}
+-------------------------------------------------------------------
+**Data description**
+
+This data set consists of 172 college majors mentioning their salary, employment rate, number of men and women in each major, among others.
+
+```{r input}
+
+selectInput(inputId="numeric_variable", label = "Select Numerical Variable:", 
+            choices = Numerical.Variables, selected = Numerical.Variables[2])
+
+uiOutput("cat_choice")
+
+output$cat_choice <- renderUI({
+  selectInput(inputId="numeric_variable_4",
+            label="Select Second Numerical Variable for Scatter Plot",
+            choices= Numerical.Variables[-which(Numerical.Variables==input$numeric_variable)])
+})
+
+```
+
+Row {.tabset .tabset-fade}
+-------------------------------------------------------------------
+
+### **Box plot** 
+```{r boxplot, fig.height=10}
+renderPlotly({
+  
+  x = reactive({col_majors_new[,input$numeric_variable]})
+  
+  plot_ly(col_majors_new, y=~fct_reorder(Major_Category, col_majors_new[,input$numeric_variable], .fun="max"), x=x(),text=col_majors_new$Major , type="box", jitter=0.5, marker = list(color = 'rgb(7,40,89)'), fillcolor='rgb(107,174,214)') %>% layout(yaxis=list(title="Major Category"), xaxis=list(title=input$numeric_variable, tickformat="number"))
+  
+})
+```
+
+### **Bar plot** 
+```{r barplot, fig.height=7}
+renderPlotly({
+  p1 = ggplot(col_majors_new2, aes_string(x=fct_reorder(col_majors_new2[,"Major_Category"], col_majors_new2[,input$numeric_variable]), y=input$numeric_variable, fill="Major_Category")) + geom_bar(stat='identity', color='blue') + theme(axis.text.x = element_text(face="bold", color="#993333", size=10, angle=45)) + scale_x_discrete(name ="Major Category") + scale_y_continuous(labels = number) + labs(fill = "Major Category")
+  
+  ggplotly(p1, res=200)
+
+})
+
+```
+
+### **Scatter Plot** 
+```{r scatterplot, fig.height=7, message=FALSE, warning=FALSE}
+
+renderPlotly({
+  p1 = ggplot(col_majors_new, aes_string(x=input$numeric_variable, y=input$numeric_variable_4, color="Major_Category")) + geom_point(aes(text=paste('Major:',Major))) + geom_smooth(aes(group=1), method="lm", formula=y~x, se=FALSE, size = 0.5) + scale_x_continuous(labels = number) + scale_y_continuous(labels = number) + labs(color = "Major Category")
+
+  ggplotly(p1, res=200)
+
+})
+
+```
+
+Row {data-height=410}
+-------------------------------------------------------------------
+### **Findings**
+
+**Box Plot**
+
+*	Engineering majors have the highest median salaries of all the major categories.
+*	Jobs in Law and Public Policy have the highest interquartile range of all the major categories.
+*	Social Science majors have the highest rate of unemployment amongst all the major categories.
+
+**Bar Plot**
+
+*	Highest number of men and women are employed in Business.
+*	Highest proportion of women are employed in Business, Education, Humanities and Liberal Arts, Health and Psychology & Social Work.
+*	Highest proportion of jobs in Education require a college degree.
+*	Jobs in Engineering have the highest median salary compared to other major categories by a large margin.
+
+**Scatter Plot**
+
+* Overall trend is that there are more women in majors than there are men.
+* The maximum number of women are in Psychology whereas the maximum number of men are in Business Management & Administration.
+* There is a slight increasing trend between the number of men and the median salary of the majors.
+* There is a decreasing trend between the number of women and the median salary of the majors.
+* As the number of men and women in the majors are increasing, the number getting a college job is also increasing. However, the trend for women is more steeper.
+* There is a slight increasing trend in the unemployment rate as the number of men and women in the majors is increasing.
+
+# Top & Bottom 20
+
+Column {.sidebar data-width=300}
+-------------------------------------------------------------------
+**Top 20**
+
+This section shows the top 20 majors by each of the numerical categories.
+
+```{r}
+
+Numerical.Variables.2 = c("Men", "Women", "Employed", "Median_Salary", "College_Jobs", "Unemployment_Rate", "Full_time", "Part_time", "Non_college_jobs", "Low_wage_jobs", "Total_Jobs")
+
+selectInput(inputId="numeric_variable_2", label = "Select Numerical Variable:", 
+          choices = Numerical.Variables.2, selected = Numerical.Variables.2[2])
+
+top_20 = reactive({
+  col_majors_new[order(col_majors_new[, input$numeric_variable_2], decreasing = TRUE)[1:20],]
+})
+
+bot_20 = reactive({
+  col_majors_new[order(col_majors_new[, input$numeric_variable_2], decreasing = FALSE)[1:20],]
+})
+
+```
+
+Row 
+-------------------------------------------------------------------
+### **Top 20 Bar Plots**
+
+```{r top20, fig.height=7.5}
+
+renderPlotly({
+
+  p1 = ggplot(top_20(), aes(x = fct_reorder(.data[["Major"]], .data[[input$numeric_variable_2]]), y=.data[[input$numeric_variable_2]], fill=.data[["Major_Category"]])) + geom_bar(stat='identity', color='blue') + coord_flip() + scale_y_continuous(labels = number) + scale_x_discrete(name ="Major") + theme(axis.text.y = element_text(face="bold", color="#993333", size=10)) + labs(fill = "Major Category")
+  
+  ggplotly(p1, res=200)
+
+})
+```
+
+Row {data-height=135}
+-------------------------------------------------------------------
+### **Findings**
+
+* Psychology has the highest number of total jobs
+* Over 75% of top 20 highest paying majors belong to Engineering major category 
+* Nuclear Engineering and Computer Networking and Telecommunications are majors 
+* Highest number of men are employed in majors like Business Management and Administration, General Business and Finance
+* Highest number of women are employed in majors like Psychology, Nursing, Biology and Elementary Education.
+
+Row 
+-------------------------------------------------------------------
+### **Bottom 20 Bar Plots**
+
+```{r bot20, fig.height=7.5}
+
+renderPlotly({
+
+  p1 = ggplot(bot_20(), aes(x = fct_reorder(.data[["Major"]], .data[[input$numeric_variable_2]], .desc = TRUE), y=.data[[input$numeric_variable_2]], fill=.data[["Major_Category"]])) + geom_bar(stat='identity', color='blue') + coord_flip() + scale_y_continuous(labels = number) + scale_x_discrete(name ="Major") + theme(axis.text.y = element_text(face="bold", color="#993333", size=10)) + labs(fill = "Major Category")
+  
+  ggplotly(p1, res=200)
+
+})
+```
+
+Row {data-height=115}
+-------------------------------------------------------------------
+### **Findings**
+
+* Mathematics and Computer Science majors have the third lowest number of total jobs amongst all majors
+* Military Technologies major has the lowest number of total jobs, non-college jobs, part time jobs, full-time jobs and college jobs
+* Lowest number of women are employed in Military Technologies, Mining and Mineral Engineering, Mathematical and Computer Science
+* Lowest number of men are employed in School Student Counselling, Military Technologies, and Library Science
+
+# Table
+
+```{r table}
+renderDT(
+  col_majors_new,
+    filter = "top",server = FALSE,
+    extensions = c('Buttons', 'Scroller'),
+      options = list(
+        dom = 'Blfrtip',
+        buttons = c('csv', 'excel', 'pdf'),
+        scrollY = '5000px',
+        scroller = TRUE
+        )
+    )
+```
+
+# Conclusion
+
+Row {data-height=195}
+-------------------------------------------------------------------
+### **Conclusion**
+
+* Engineering majors have the highest median salaries.
+* Engineering majors also have a low average unemployment rate.
+* Interdisciplinary Majors have the highest average unemployment rate.
+* Business Major Category has the highest number of men & women.
+* Nursing has the highest number of people with a college job.
+* Mechanical, Electrical & Civil Engineering are also in the top 20 majors having people with a college job.
+* Psychology & Business Management and Administration majors have the highest number of people employed but they also have the highest number of people with non college and low wage jobs.
+* Military Technologies major has no jobs.
+
+Row
+-------------------------------------------------------------------
+
+```{r wordcloud, out.width="99.5%"}
+words<-as.character(words)
+word.corpus<-Corpus(VectorSource(words)) #Corpus
+
+word.corpus<-word.corpus%>%
+  tm_map(removePunctuation)%>% ##eliminate punctuation
+  tm_map(removeNumbers)%>% #no numbers
+  tm_map(stripWhitespace)#white spaces
+
+word.corpus<-word.corpus%>%
+  tm_map(tolower)%>% ##make all words lowercase
+  tm_map(removeWords, stopwords("english"))
+
+word.counts<-as.matrix(TermDocumentMatrix(word.corpus))
+word.freq<-sort(rowSums(word.counts), decreasing=TRUE)
+demoFreq = data.frame(names(word.freq), word.freq)
+
+set.seed(544) #be sure to set the seed if you want to reproduce the same again
+
+wordcloud2(data=demoFreq[1:50,], size=0.95, shape='diamond', backgroundColor="white")
+```
